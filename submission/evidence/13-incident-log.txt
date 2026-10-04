@@ -1,0 +1,11 @@
+10 request bất thường (latency > 2000 ms hoặc request_failed)
+2026-09-30T09:27:31.522497Z | response_sent  | req-acbca146 | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:34.178434Z | response_sent  | req-0819d94a | feature=summary | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:36.831349Z | response_sent  | req-ebe0f20a | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:39.484411Z | response_sent  | req-71651c10 | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:42.138026Z | response_sent  | req-799ca282 | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:44.794772Z | response_sent  | req-07772ac5 | feature=summary | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:47.451025Z | response_sent  | req-b62cd341 | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:50.105068Z | response_sent  | req-a255e064 | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:52.757869Z | response_sent  | req-f265328c | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None
+2026-09-30T09:27:55.410598Z | response_sent  | req-540c84dd | feature=qa | latency_ms=2651 | ttft_ms=50 | error_type=None

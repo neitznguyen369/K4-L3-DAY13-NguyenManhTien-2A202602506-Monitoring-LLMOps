@@ -3,13 +3,20 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from . import metrics
 from .mock_llm import FakeLLM
 from .mock_rag import retrieve
 from .pii import hash_user_id, summarize_text
 from .prompt_management import resolve_prompt
-from .tracing import get_langfuse_client, observe, propagate_attributes, tracing_enabled
+from .tracing import (
+    get_langfuse_client,
+    observe,
+    propagate_attributes,
+    start_observation,
+    tracing_enabled,
+)
 
 
 @dataclass
@@ -51,7 +58,7 @@ class LabAgent:
             },
         ):
             started = time.perf_counter()
-            docs = retrieve(message)
+            docs = self._retrieve(message)
             prompt = resolve_prompt(
                 langfuse_client,
                 feature=feature,
@@ -71,13 +78,11 @@ class LabAgent:
                 },
                 version=prompt.version,
             )
-            # TODO (CP2): instrument retrieve() and FakeLLM.generate() as child
-            # observations. The nested generation must receive prompt, usage and cost.
+            # Prompt version được gắn vào generation con thông qua propagate_attributes.
             with propagate_attributes(prompt=prompt.managed_prompt):
-                response = self.llm.generate(prompt.text)
+                response, cost_usd = self._generate(prompt.text)
             quality_score = self._heuristic_quality(message, response.text, docs)
             latency_ms = int((time.perf_counter() - started) * 1000)
-            cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
 
         metrics.record_request(
             latency_ms=latency_ms,
@@ -97,6 +102,51 @@ class LabAgent:
             cost_usd=cost_usd,
             quality_score=quality_score,
         )
+
+    def _retrieve(self, message: str) -> list[str]:
+        """Child observation `retrieval` (type retriever): đo riêng thời gian/lỗi của RAG."""
+        with start_observation(
+            name="retrieval",
+            as_type="retriever",
+            input={"query_preview": summarize_text(message)},
+        ) as observation:
+            try:
+                docs = retrieve(message)
+            except Exception as exc:
+                observation.update(level="ERROR", status_message=f"{type(exc).__name__}: {exc}")
+                raise
+            observation.update(
+                output={"doc_count": len(docs)},
+                metadata={"doc_count": len(docs)},
+            )
+            return docs
+
+    def _generate(self, prompt_text: str):
+        """Child observation `llm-generate` (type generation) kèm model, usage và cost.
+
+        Chỉ lưu bản preview đã che PII của prompt/answer, không lưu nguyên văn.
+        """
+        with start_observation(
+            name="llm-generate",
+            as_type="generation",
+            model=self.model,
+            input=summarize_text(prompt_text, max_len=300),
+        ) as generation:
+            call_started = datetime.now(timezone.utc)
+            response = self.llm.generate(prompt_text)
+            tokens_in = response.usage.input_tokens
+            tokens_out = response.usage.output_tokens
+            cost_usd = self._estimate_cost(tokens_in, tokens_out)
+            input_cost = round((tokens_in / 1_000_000) * 3, 6)
+            output_cost = round((tokens_out / 1_000_000) * 15, 6)
+            generation.update(
+                output=summarize_text(response.text, max_len=300),
+                completion_start_time=call_started + timedelta(milliseconds=response.ttft_ms),
+                usage_details={"input": tokens_in, "output": tokens_out},
+                cost_details={"input": input_cost, "output": output_cost, "total": cost_usd},
+                metadata={"ttft_ms": response.ttft_ms},
+            )
+            return response, cost_usd
 
     def _estimate_cost(self, tokens_in: int, tokens_out: int) -> float:
         input_cost = (tokens_in / 1_000_000) * 3
